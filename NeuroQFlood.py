@@ -1,19 +1,11 @@
-"""
-NeuroQ-Flood - Week 4 Starter
-Bio-Inspired AI - Fall 2026
-
-Week 4 Goal:
-Add adaptive weights and persistent memory to the
-original quantum flood model.
-
-q0 = Gage Height
-q1 = Stream Discharge
-q2 = Water-Level Change
-
-w0 = Gage Height Weight
-w1 = Stream Discharge Weight
-w2 = Water-Level Change Weight
-"""
+# =========================================================
+# NeuroQ-Flood
+# Bio-Inspired AI - Fall 2026
+# Gabriel Granados & Alberto Gonzalez
+#
+# WEEK 5:
+# Adaptive Quantum Encoding
+# =========================================================
 
 import json
 import math
@@ -22,14 +14,11 @@ from pathlib import Path
 from qiskit import QuantumCircuit
 
 
-# ---------------------------------------------------------
-# 1. PROJECT SETTINGS
-# ---------------------------------------------------------
+# =========================================================
+# PROJECT SETTINGS
+# =========================================================
 
 MEMORY_FILE = Path("adaptive_weights.json")
-
-# All weights begin at 1.0.
-# This means the first run behaves like our original model.
 
 DEFAULT_WEIGHTS = {
     "gage_weight": 1.0,       # w0
@@ -37,22 +26,20 @@ DEFAULT_WEIGHTS = {
     "change_weight": 1.0      # w2
 }
 
-# Stability / homeostasis limits
+# Homeostasis / stability limits
 MIN_WEIGHT = 0.5
 MAX_WEIGHT = 1.5
 
 
-# ---------------------------------------------------------
-# 2. LOAD ADAPTIVE MEMORY
-# ---------------------------------------------------------
+# =========================================================
+# LOAD ADAPTIVE MEMORY
+# =========================================================
 
 def load_weights():
 
-    # If no memory file exists, create one.
     if not MEMORY_FILE.exists():
 
         weights = DEFAULT_WEIGHTS.copy()
-
         save_weights(weights)
 
         return weights
@@ -60,12 +47,9 @@ def load_weights():
     try:
 
         with open(MEMORY_FILE, "r") as file:
-
             weights = json.load(file)
 
-        # Make sure all three weights exist.
         for key, default_value in DEFAULT_WEIGHTS.items():
-
             weights.setdefault(key, default_value)
 
         return weights
@@ -73,30 +57,32 @@ def load_weights():
     except (json.JSONDecodeError, OSError):
 
         print("Could not read adaptive memory.")
-
         print("Resetting weights to default values.")
 
         weights = DEFAULT_WEIGHTS.copy()
-
         save_weights(weights)
 
         return weights
 
 
-# ---------------------------------------------------------
-# 3. SAVE ADAPTIVE MEMORY
-# ---------------------------------------------------------
+# =========================================================
+# SAVE ADAPTIVE MEMORY
+# =========================================================
 
 def save_weights(weights):
 
     with open(MEMORY_FILE, "w") as file:
 
-        json.dump(weights, file, indent=4)
+        json.dump(
+            weights,
+            file,
+            indent=4
+        )
 
 
-# ---------------------------------------------------------
-# 4. KEEP WEIGHTS INSIDE SAFE RANGE
-# ---------------------------------------------------------
+# =========================================================
+# HOMEOSTASIS / WEIGHT STABILITY
+# =========================================================
 
 def clamp_weight(value):
 
@@ -106,14 +92,13 @@ def clamp_weight(value):
     )
 
 
-# ---------------------------------------------------------
-# 5. NORMALIZATION
-# ---------------------------------------------------------
+# =========================================================
+# NORMALIZATION
+# =========================================================
 
 def normalize(value, minimum, maximum):
 
     if maximum == minimum:
-
         return 0.0
 
     score = (
@@ -128,18 +113,59 @@ def normalize(value, minimum, maximum):
     )
 
 
-# ---------------------------------------------------------
-# 6. CONVERT SCORE INTO QUANTUM ANGLE
-# ---------------------------------------------------------
+# =========================================================
+# CONVERT SCORE TO QUANTUM ANGLE
+# =========================================================
 
 def score_to_angle(score):
 
     return (score / 100.0) * math.pi
 
 
-# ---------------------------------------------------------
-# 7. BUILD ADAPTIVE QUANTUM CIRCUIT
-# ---------------------------------------------------------
+# =========================================================
+# CALCULATE ADAPTIVE ANGLES
+# =========================================================
+
+def calculate_adaptive_angles(
+    gage_score,
+    discharge_score,
+    change_score,
+    weights
+):
+
+    # Original quantum angles
+    theta0 = score_to_angle(gage_score)
+    theta1 = score_to_angle(discharge_score)
+    theta2 = score_to_angle(change_score)
+
+    # Apply stability limits to weights
+    w0 = clamp_weight(weights["gage_weight"])
+    w1 = clamp_weight(weights["discharge_weight"])
+    w2 = clamp_weight(weights["change_weight"])
+
+    # Adaptive quantum angles
+    adaptive_theta0 = w0 * theta0
+    adaptive_theta1 = w1 * theta1
+    adaptive_theta2 = w2 * theta2
+
+    return {
+        "theta0": theta0,
+        "theta1": theta1,
+        "theta2": theta2,
+
+        "w0": w0,
+        "w1": w1,
+        "w2": w2,
+
+        "adaptive_theta0": adaptive_theta0,
+        "adaptive_theta1": adaptive_theta1,
+        "adaptive_theta2": adaptive_theta2
+    }
+
+
+# =========================================================
+# BUILD ADAPTIVE QUANTUM CIRCUIT
+# =========================================================
 
 def build_adaptive_circuit(
     gage_score,
@@ -148,245 +174,378 @@ def build_adaptive_circuit(
     weights
 ):
 
-    # Convert normalized environmental values
-    # into rotation angles.
-
-    theta0 = score_to_angle(gage_score)
-
-    theta1 = score_to_angle(discharge_score)
-
-    theta2 = score_to_angle(change_score)
-
-
-    # Load adaptive weights.
-
-    w0 = clamp_weight(
-        weights["gage_weight"]
-    )
-
-    w1 = clamp_weight(
-        weights["discharge_weight"]
-    )
-
-    w2 = clamp_weight(
-        weights["change_weight"]
-    )
-
-
-    # Create 3-qubit circuit.
-
-    circuit = QuantumCircuit(3, 3)
-
-
-    # -----------------------------------------------------
-    # ADAPTIVE ENCODING
-    # -----------------------------------------------------
-
-    # Original model:
-    #
-    # RY(theta)
-    #
-    # NeuroQ-Flood:
-    #
-    # RY(weight * theta)
-
-    circuit.ry(
-        w0 * theta0,
-        0
-    )
-
-    circuit.ry(
-        w1 * theta1,
-        1
-    )
-
-    circuit.ry(
-        w2 * theta2,
-        2
-    )
-
-
-    # -----------------------------------------------------
-    # ORIGINAL ENTANGLEMENT
-    # -----------------------------------------------------
-
-    circuit.cx(0, 1)
-
-    circuit.cx(1, 2)
-
-
-    # -----------------------------------------------------
-    # MEASUREMENT
-    # -----------------------------------------------------
-
-    circuit.measure(
-        [0, 1, 2],
-        [0, 1, 2]
-    )
-
-
-    return circuit
-
-
-# ---------------------------------------------------------
-# 8. MAIN PROGRAM
-# ---------------------------------------------------------
-
-def main():
-
-    print("=" * 60)
-
-    print(
-        "NEUROQ-FLOOD - WEEK 4 ADAPTIVE MODEL"
-    )
-
-    print("=" * 60)
-
-
-    # Load previous memory.
-
-    weights = load_weights()
-
-
-    print("\nLoaded Adaptive Memory:")
-
-    print(
-        f"w0 - Gage Height Weight:        "
-        f"{weights['gage_weight']:.2f}"
-    )
-
-    print(
-        f"w1 - Discharge Weight:          "
-        f"{weights['discharge_weight']:.2f}"
-    )
-
-    print(
-        f"w2 - Water-Level Change Weight: "
-        f"{weights['change_weight']:.2f}"
-    )
-
-
-    # -----------------------------------------------------
-    # TEMPORARY WEEK 4 TEST VALUES
-    # -----------------------------------------------------
-
-    # These are normalized values from one of our
-    # previous flood-model runs.
-    #
-    # For Week 4 we are using known values so we can
-    # test the adaptive architecture before reconnecting
-    # the live environmental-data system.
-
-    gage_score = 18.03
-
-    discharge_score = 4.44
-
-    change_score = 13.04
-
-
-    print(
-        "\nNormalized Environmental Scores:"
-    )
-
-    print(
-        f"q0 Gage Height Score:        "
-        f"{gage_score:.2f}"
-    )
-
-    print(
-        f"q1 Discharge Score:          "
-        f"{discharge_score:.2f}"
-    )
-
-    print(
-        f"q2 Water-Level Change Score: "
-        f"{change_score:.2f}"
-    )
-
-
-    # Build adaptive circuit.
-
-    circuit = build_adaptive_circuit(
+    values = calculate_adaptive_angles(
         gage_score,
         discharge_score,
         change_score,
         weights
     )
 
+    circuit = QuantumCircuit(3, 3)
 
-    # Display circuit.
+    # -----------------------------------------------------
+    # Adaptive RY encoding
+    #
+    # q0 -> RY(w0 * theta0)
+    # q1 -> RY(w1 * theta1)
+    # q2 -> RY(w2 * theta2)
+    # -----------------------------------------------------
+
+    circuit.ry(
+        values["adaptive_theta0"],
+        0
+    )
+
+    circuit.ry(
+        values["adaptive_theta1"],
+        1
+    )
+
+    circuit.ry(
+        values["adaptive_theta2"],
+        2
+    )
+
+    # Entanglement
+    circuit.cx(0, 1)
+    circuit.cx(1, 2)
+
+    # Measurement
+    circuit.measure(
+        [0, 1, 2],
+        [0, 1, 2]
+    )
+
+    return circuit, values
+
+
+# =========================================================
+# DISPLAY ENCODING TEST
+# =========================================================
+
+def display_encoding_test(
+    name,
+    weights,
+    gage_score,
+    discharge_score,
+    change_score
+):
+
+    print("\n")
+    print("=" * 65)
+    print(name)
+    print("=" * 65)
+
+    circuit, values = build_adaptive_circuit(
+        gage_score,
+        discharge_score,
+        change_score,
+        weights
+    )
+
+    # -----------------------------------------------------
+    # Display weights
+    # -----------------------------------------------------
+
+    print("\nWEIGHTS")
 
     print(
-        "\nAdaptive Quantum Circuit:"
+        f"w0 - Gage Height:        "
+        f"{values['w0']:.2f}"
     )
 
     print(
-        circuit.draw(output="text")
-    )
-
-
-    print(
-        "\nEncoding Being Used:"
+        f"w1 - Stream Discharge:   "
+        f"{values['w1']:.2f}"
     )
 
     print(
-        "q0 -> RY(w0 x theta0)"
+        f"w2 - Water-Level Change: "
+        f"{values['w2']:.2f}"
+    )
+
+    # -----------------------------------------------------
+    # q0
+    # -----------------------------------------------------
+
+    print("\nQUANTUM ENCODING")
+
+    print("\nq0 - Gage Height")
+
+    print(
+        f"Original angle: "
+        f"{values['theta0']:.4f} radians"
     )
 
     print(
-        "q1 -> RY(w1 x theta1)"
+        f"Adaptive angle: "
+        f"{values['adaptive_theta0']:.4f} radians"
+    )
+
+    # -----------------------------------------------------
+    # q1
+    # -----------------------------------------------------
+
+    print("\nq1 - Stream Discharge")
+
+    print(
+        f"Original angle: "
+        f"{values['theta1']:.4f} radians"
     )
 
     print(
-        "q2 -> RY(w2 x theta2)"
+        f"Adaptive angle: "
+        f"{values['adaptive_theta1']:.4f} radians"
     )
 
+    # -----------------------------------------------------
+    # q2
+    # -----------------------------------------------------
+
+    print("\nq2 - Water-Level Change")
 
     print(
-        "\nMemory File:"
-    )
-
-    print(
-        MEMORY_FILE.resolve()
-    )
-
-
-    print(
-        "\nWeek 4 Status:"
+        f"Original angle: "
+        f"{values['theta2']:.4f} radians"
     )
 
     print(
-        "[OK] Adaptive weights created"
+        f"Adaptive angle: "
+        f"{values['adaptive_theta2']:.4f} radians"
+    )
+
+    # -----------------------------------------------------
+    # Display quantum circuit
+    # -----------------------------------------------------
+
+    print("\nQUANTUM CIRCUIT")
+
+    print(
+        circuit.draw(
+            output="text"
+        )
+    )
+
+
+# =========================================================
+# MAIN PROGRAM
+# =========================================================
+
+def main():
+
+    print("=" * 65)
+
+    print("NEUROQ-FLOOD")
+    print("Week 5 - Adaptive Quantum Encoding")
+
+    print("=" * 65)
+
+    # -----------------------------------------------------
+    # Load persistent memory
+    # -----------------------------------------------------
+
+    saved_weights = load_weights()
+
+    print("\nSAVED ADAPTIVE MEMORY")
+
+    print(
+        f"w0 = "
+        f"{saved_weights['gage_weight']:.2f}"
     )
 
     print(
-        "[OK] Weights persist between runs"
+        f"w1 = "
+        f"{saved_weights['discharge_weight']:.2f}"
     )
 
     print(
-        "[OK] Weight limits defined"
+        f"w2 = "
+        f"{saved_weights['change_weight']:.2f}"
+    )
+
+
+    # =====================================================
+    # WEEK 5 CONTROLLED TEST DATA
+    # =====================================================
+    #
+    # We keep the environmental measurements constant
+    # during all three tests.
+    #
+    # This allows us to prove that changes in the quantum
+    # circuit come from the weights instead of changes
+    # in environmental conditions.
+    # =====================================================
+
+    gage_score = 18.03
+    discharge_score = 4.44
+    change_score = 13.04
+
+    print("\nCONTROLLED ENVIRONMENTAL INPUT")
+
+    print(
+        f"q0 - Gage Height:        "
+        f"{gage_score:.2f}"
     )
 
     print(
-        "[OK] Adaptive RY encoding created"
+        f"q1 - Stream Discharge:   "
+        f"{discharge_score:.2f}"
     )
 
     print(
-        "[NEXT] Add automatic feedback rules"
+        f"q2 - Water-Level Change: "
+        f"{change_score:.2f}"
+    )
+
+
+    # =====================================================
+    # TEST 1 - BASELINE
+    # =====================================================
+    #
+    # Every weight = 1.0
+    #
+    # Therefore:
+    #
+    # RY(1.0 * theta) = RY(theta)
+    #
+    # This represents the original model behavior.
+    # =====================================================
+
+    baseline_weights = {
+
+        "gage_weight": 1.0,
+
+        "discharge_weight": 1.0,
+
+        "change_weight": 1.0
+    }
+
+    display_encoding_test(
+        "TEST 1 - BASELINE ENCODING",
+        baseline_weights,
+        gage_score,
+        discharge_score,
+        change_score
+    )
+
+
+    # =====================================================
+    # TEST 2 - ADAPTIVE ENCODING
+    # =====================================================
+    #
+    # We manually simulate an adapted state.
+    #
+    # w0 > 1 = stronger gage-height influence
+    # w1 < 1 = weaker discharge influence
+    # w2 > 1 = stronger water-change influence
+    #
+    # Week 6 will eventually determine changes like
+    # these automatically.
+    # =====================================================
+
+    adaptive_test_weights = {
+
+        "gage_weight": 1.10,
+
+        "discharge_weight": 0.90,
+
+        "change_weight": 1.25
+    }
+
+    display_encoding_test(
+        "TEST 2 - ADAPTIVE ENCODING",
+        adaptive_test_weights,
+        gage_score,
+        discharge_score,
+        change_score
+    )
+
+
+    # =====================================================
+    # TEST 3 - HOMEOSTASIS
+    # =====================================================
+    #
+    # Deliberately give the system unsafe weights.
+    #
+    # Requested:
+    #
+    # w0 = 1.80
+    # w1 = 0.20
+    # w2 = 1.25
+    #
+    # Expected after clamp_weight():
+    #
+    # w0 = 1.50
+    # w1 = 0.50
+    # w2 = 1.25
+    #
+    # This proves our stability system works.
+    # =====================================================
+
+    unstable_weights = {
+
+        "gage_weight": 1.80,
+
+        "discharge_weight": 0.20,
+
+        "change_weight": 1.25
+    }
+
+    display_encoding_test(
+        "TEST 3 - HOMEOSTASIS LIMIT TEST",
+        unstable_weights,
+        gage_score,
+        discharge_score,
+        change_score
+    )
+
+
+    # =====================================================
+    # WEEK 5 STATUS
+    # =====================================================
+
+    print("\n")
+    print("=" * 65)
+
+    print("WEEK 5 STATUS")
+
+    print("=" * 65)
+
+    print(
+        "[OK] Environmental inputs remain q0, q1, q2"
     )
 
     print(
-        "[NEXT] Reconnect live flood data"
+        "[OK] Adaptive parameters remain w0, w1, w2"
     )
 
     print(
-        "[NEXT] Run adaptive circuit on IBM Quantum"
+        "[OK] Weights modify quantum rotation angles"
+    )
+
+    print(
+        "[OK] RY(w x theta) encoding implemented"
+    )
+
+    print(
+        "[OK] Homeostasis limits tested"
+    )
+
+    print(
+        "[OK] Persistent memory retained"
+    )
+
+    print("\nNEXT: WEEK 6")
+
+    print(
+        "Replace manual weight changes with "
+        "automatic feedback."
     )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # START PROGRAM
-# ---------------------------------------------------------
+# =========================================================
 
 if __name__ == "__main__":
 
