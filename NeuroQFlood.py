@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 
 """
-NeuroQ-Flood — Week 10 Forecasting Comparison
+NeuroQ-Flood — Adaptive Quantum Forecasting
 
-Historical USGS flood forecasting.
+Compares four forecasting approaches:
 
-Compares:
-1. Persistence baseline
-2. Classical forecasting
-3. Hybrid quantum-classical forecasting
+1. Persistence
+2. Classical
+3. Fixed-weight hybrid
+4. Adaptive hybrid
 
-Uses chronological training/testing
-and a 60-minute forecast horizon.
+Uses historical USGS measurements and
+chronological forecasting evaluation.
 """
 
 import argparse
@@ -39,7 +39,7 @@ ROOT = Path(__file__).resolve().parent
 def main():
 
     parser = argparse.ArgumentParser(
-        description="NeuroQ-Flood forecasting comparison"
+        description="NeuroQ-Flood adaptive forecasting"
     )
 
     parser.add_argument(
@@ -126,14 +126,14 @@ def main():
         / "results"
         / (
             cache.stem
-            + "_model_comparison.csv"
+            + "_adaptive_comparison.csv"
         )
     )
 
     print("\n" + "=" * 60)
 
     print(
-        "NEUROQ-FLOOD MODEL COMPARISON"
+        "NEUROQ-FLOOD ADAPTIVE FORECASTING"
     )
 
     print("=" * 60)
@@ -147,7 +147,8 @@ def main():
     )
 
     print(
-        "\nModels: Persistence, Classical, Hybrid"
+        "\nModels: Persistence, Classical, "
+        "Fixed Hybrid, Adaptive Hybrid"
     )
 
     print(
@@ -184,7 +185,17 @@ def main():
     )
 
     print(
-        f"\nQuantum encoding weights: {weights}"
+        f"\nInitial quantum weights: {weights}"
+    )
+
+    print(
+        "Final adaptive weights: "
+        f"{result['adaptive_weights']}"
+    )
+
+    print(
+        "Accepted adaptive updates: "
+        f"{result['adaptive_updates']}"
     )
 
     print_metrics(
@@ -198,8 +209,13 @@ def main():
     )
 
     print_metrics(
-        "HYBRID NEUROQ-FLOOD FORECASTING",
+        "FIXED-WEIGHT HYBRID",
         result["hybrid_metrics"]
+    )
+
+    print_metrics(
+        "ADAPTIVE HYBRID",
+        result["adaptive_metrics"]
     )
 
     results = {
@@ -210,8 +226,11 @@ def main():
         "Classical":
             result["classical_metrics"]["RMSE"],
 
-        "Hybrid NeuroQ-Flood":
-            result["hybrid_metrics"]["RMSE"]
+        "Fixed Hybrid":
+            result["hybrid_metrics"]["RMSE"],
+
+        "Adaptive Hybrid":
+            result["adaptive_metrics"]["RMSE"]
 
     }
 
@@ -236,28 +255,28 @@ def main():
         f"\nLowest RMSE: {winner}"
     )
 
-    classical_rmse = results["Classical"]
+    fixed_rmse = results["Fixed Hybrid"]
 
-    hybrid_rmse = results["Hybrid NeuroQ-Flood"]
+    adaptive_rmse = results["Adaptive Hybrid"]
 
-    if hybrid_rmse < classical_rmse:
+    if adaptive_rmse < fixed_rmse:
 
         print(
-            "\nQuantum features improved RMSE "
-            "relative to the classical model."
+            "\nAdaptive learning improved RMSE "
+            "relative to fixed quantum weights."
         )
 
-    elif hybrid_rmse > classical_rmse:
+    elif adaptive_rmse > fixed_rmse:
 
         print(
-            "\nQuantum features did not improve "
-            "RMSE relative to the classical model."
+            "\nAdaptive learning did not improve "
+            "RMSE relative to fixed quantum weights."
         )
 
     else:
 
         print(
-            "\nClassical and hybrid models "
+            "\nAdaptive and fixed hybrid models "
             "achieved equal RMSE."
         )
 
@@ -266,8 +285,8 @@ def main():
     print(output)
 
     print(
-        "\nNOTE: Automatic adaptive learning "
-        "is not yet implemented."
+        "\nNOTE: Adaptive learning updates quantum "
+        "encoding weights only."
     )
 
     print(

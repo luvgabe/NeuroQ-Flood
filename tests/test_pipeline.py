@@ -1,6 +1,6 @@
 """
 NeuroQ-Flood — Automated Pipeline Tests
-Week 10
+Week 10: Adaptive Quantum Forecasting
 
 Tests:
 1. Homeostasis
@@ -14,6 +14,9 @@ Tests:
 9. Discharge trends
 10. Missing discharge trends
 11. Quantum feature comparison
+
+Adaptive-learning tests are located in:
+tests/test_adaptive_learning.py
 """
 
 import csv
@@ -360,7 +363,22 @@ class PipelineTests(unittest.TestCase):
             )
 
             self.assertIn(
+                "adaptive_metrics",
+                result
+            )
+
+            self.assertIn(
                 "persistence_metrics",
+                result
+            )
+
+            self.assertIn(
+                "adaptive_weights",
+                result
+            )
+
+            self.assertIn(
+                "adaptive_updates",
                 result
             )
 
@@ -384,8 +402,40 @@ class PipelineTests(unittest.TestCase):
                     reader.fieldnames
                 )
 
+                # Updated Week 10 forecasting columns
+
                 self.assertIn(
-                    "hybrid_forecast_cfs",
+                    "fixed_hybrid_forecast_cfs",
+                    reader.fieldnames
+                )
+
+                self.assertIn(
+                    "adaptive_hybrid_forecast_cfs",
+                    reader.fieldnames
+                )
+
+                self.assertIn(
+                    "persistence_forecast_cfs",
+                    reader.fieldnames
+                )
+
+                self.assertIn(
+                    "adaptive_gage_weight",
+                    reader.fieldnames
+                )
+
+                self.assertIn(
+                    "adaptive_discharge_weight",
+                    reader.fieldnames
+                )
+
+                self.assertIn(
+                    "adaptive_change_weight",
+                    reader.fieldnames
+                )
+
+                self.assertIn(
+                    "adaptive_updates",
                     reader.fieldnames
                 )
 

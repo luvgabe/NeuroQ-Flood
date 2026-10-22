@@ -1,23 +1,27 @@
 """
 NeuroQ-Flood — Historical Replay
-Week 10: Classical vs. Quantum Forecasting
+Week 10: Adaptive Quantum Learning
 
-Replays historical USGS measurements chronologically.
-
-Evaluates three forecasting approaches:
+Evaluates four forecasting approaches:
 
 1. Persistence baseline
 2. Classical forecasting
-3. Hybrid quantum-classical forecasting
+3. Fixed-weight hybrid forecasting
+4. Adaptive hybrid forecasting
 
-All models use the same chronological training
-and testing periods.
+The adaptive model updates quantum encoding weights
+using completed historical forecasts.
 
-Forecasts are evaluated 60 minutes ahead.
+A forecast becomes eligible for feedback only after
+its target observation becomes available.
+
+The regression coefficients remain fixed after
+training. Only the quantum encoding weights adapt.
 """
 
 import csv
 
+from collections import deque
 from datetime import timedelta
 from pathlib import Path
 
@@ -30,6 +34,8 @@ from neuroq.risk_assessment import analyze
 
 from neuroq.memory import clamp_weights
 
+from neuroq.adaptive_learning import update_weights
+
 from neuroq.forecasting import (
     DischargeForecaster,
     extract_features,
@@ -40,9 +46,20 @@ from neuroq.forecasting import (
 from evaluation.accuracy_metrics import metrics
 
 
+ADAPTIVE_LEARNING_RATE = 0.001
+
+ADAPTIVE_EPSILON = 0.001
+
+ADAPTIVE_MAX_GRADIENT = 100.0
+
+FEEDBACK_WINDOW = 12
+
+
 def replay(rows, weights, destination):
 
     weights = clamp_weights(weights)
+
+    adaptive_weights = weights.copy()
 
     rows = sorted(
         rows,
@@ -58,7 +75,7 @@ def replay(rows, weights, destination):
         if (
             unique_rows
             and row["timestamp"]
-            <= unique_rows[-1]["timestamp"]
+            == unique_rows[-1]["timestamp"]
         ):
             continue
 
@@ -67,6 +84,7 @@ def replay(rows, weights, destination):
     rows = unique_rows
 
     if len(rows) < 20:
+
         raise ValueError(
             "At least 20 historical measurements "
             "are required."
@@ -78,8 +96,6 @@ def replay(rows, weights, destination):
         parents=True,
         exist_ok=True
     )
-
-    # Chronological training/test split.
 
     split = int(len(rows) * 0.60)
 
@@ -96,7 +112,9 @@ def replay(rows, weights, destination):
         minutes=HORIZON_MINUTES
     )
 
-    # Prepare training datasets.
+    # --------------------------------------------------
+    # TRAIN FORECASTING MODELS
+    # --------------------------------------------------
 
     classical_training = []
 
@@ -104,9 +122,7 @@ def replay(rows, weights, destination):
 
     targets = []
 
-    for index, current in enumerate(
-        training_rows
-    ):
+    for index, current in enumerate(training_rows):
 
         future_time = (
             current["timestamp"] + horizon
@@ -116,9 +132,6 @@ def replay(rows, weights, destination):
 
         if future is None:
             continue
-
-        # Prevent training targets from
-        # crossing into the test period.
 
         if (
             future["timestamp"]
@@ -137,9 +150,6 @@ def replay(rows, weights, destination):
             previous,
             ranges
         )
-
-        # Only measurements at or before
-        # the current timestamp are used.
 
         trends, availability = (
             calculate_discharge_trends(
@@ -179,25 +189,55 @@ def replay(rows, weights, destination):
         )
 
     if len(targets) < 10:
+
         raise ValueError(
             "Not enough complete training examples."
         )
 
-    # Train both forecasting models.
-
     classical_model = DischargeForecaster()
 
-    hybrid_model = DischargeForecaster()
+    fixed_hybrid_model = DischargeForecaster()
 
     classical_model.fit(
         classical_training,
         targets
     )
 
-    hybrid_model.fit(
+    fixed_hybrid_model.fit(
         hybrid_training,
         targets
     )
+
+    # The adaptive model starts with the same
+    # trained regression coefficients.
+
+    adaptive_model = fixed_hybrid_model
+
+    # --------------------------------------------------
+    # ADAPTIVE FEEDBACK MEMORY
+    # --------------------------------------------------
+
+    feedback_history = deque(
+        maxlen=FEEDBACK_WINDOW
+    )
+
+    pending_forecasts = {}
+
+    adaptive_updates = 0
+
+    # --------------------------------------------------
+    # RESULTS
+    # --------------------------------------------------
+
+    observed = []
+
+    persistence_predictions = []
+
+    classical_predictions = []
+
+    fixed_hybrid_predictions = []
+
+    adaptive_predictions = []
 
     columns = [
 
@@ -207,49 +247,28 @@ def replay(rows, weights, destination):
         "gage_height_ft",
         "discharge_cfs",
 
-        "gage_norm",
-        "discharge_norm",
-        "rise_norm",
-
         "trend_15min_cfs",
         "trend_30min_cfs",
         "trend_60min_cfs",
 
-        "trend_15min_available",
-        "trend_30min_available",
-        "trend_60min_available",
-
-        "quantum_score",
-        "classical_score",
-        "hybrid_score",
-
         "risk",
         "recommendation",
 
-        "gage_weight",
-        "discharge_weight",
-        "change_weight",
-
-        "forecast_horizon_minutes",
         "forecast_timestamp",
-
         "actual_future_discharge_cfs",
 
         "persistence_forecast_cfs",
         "classical_forecast_cfs",
-        "hybrid_forecast_cfs",
+        "fixed_hybrid_forecast_cfs",
+        "adaptive_hybrid_forecast_cfs",
 
-        "classical_absolute_error_cfs",
-        "hybrid_absolute_error_cfs",
-        "persistence_absolute_error_cfs"
+        "adaptive_gage_weight",
+        "adaptive_discharge_weight",
+        "adaptive_change_weight",
+
+        "adaptive_updates"
 
     ]
-
-    observed = []
-
-    persistence_predictions = []
-    classical_predictions = []
-    hybrid_predictions = []
 
     with destination.open(
         "w",
@@ -267,15 +286,84 @@ def replay(rows, weights, destination):
 
         for index, current in enumerate(rows):
 
+            timestamp = current["timestamp"]
+
+            # ------------------------------------------
+            # PROCESS COMPLETED FORECASTS
+            # ------------------------------------------
+
+            completed = pending_forecasts.pop(
+                timestamp,
+                []
+            )
+
+            for completed_forecast in completed:
+
+                feedback_history.append(
+                    completed_forecast
+                )
+
+            if completed:
+
+                def feedback(candidate_weights):
+
+                    predictions = []
+
+                    actual_values = []
+
+                    for example in feedback_history:
+
+                        features = extract_features(
+                            example["inputs"],
+                            candidate_weights,
+                            example["discharge"],
+                            example["trends"],
+                            example["availability"],
+                            include_quantum=True
+                        )
+
+                        prediction = (
+                            adaptive_model.predict(
+                                features
+                            )
+                        )
+
+                        predictions.append(
+                            prediction
+                        )
+
+                        actual_values.append(
+                            example["actual"]
+                        )
+
+                    return (
+                        predictions,
+                        actual_values
+                    )
+
+                updated = update_weights(
+                    adaptive_weights,
+                    feedback=feedback,
+                    enabled=True,
+                    learning_rate=ADAPTIVE_LEARNING_RATE,
+                    epsilon=ADAPTIVE_EPSILON,
+                    max_gradient=ADAPTIVE_MAX_GRADIENT
+                )
+
+                if updated != adaptive_weights:
+
+                    adaptive_weights = updated
+
+                    adaptive_updates += 1
+
+            # ------------------------------------------
+            # PREPARE CURRENT MEASUREMENTS
+            # ------------------------------------------
+
             inputs = prepare(
                 current,
                 previous,
                 ranges
-            )
-
-            risk_result = analyze(
-                inputs,
-                weights
             )
 
             trends, availability = (
@@ -284,6 +372,15 @@ def replay(rows, weights, destination):
                     lookup
                 )
             )
+
+            risk_result = analyze(
+                inputs,
+                weights
+            )
+
+            # ------------------------------------------
+            # CLASSICAL FORECAST
+            # ------------------------------------------
 
             classical_features = extract_features(
                 inputs,
@@ -294,7 +391,17 @@ def replay(rows, weights, destination):
                 include_quantum=False
             )
 
-            hybrid_features = extract_features(
+            classical_prediction = (
+                classical_model.predict(
+                    classical_features
+                )
+            )
+
+            # ------------------------------------------
+            # FIXED HYBRID FORECAST
+            # ------------------------------------------
+
+            fixed_features = extract_features(
                 inputs,
                 weights,
                 current["discharge_cfs"],
@@ -303,15 +410,28 @@ def replay(rows, weights, destination):
                 include_quantum=True
             )
 
-            classical_prediction = (
-                classical_model.predict(
-                    classical_features
+            fixed_prediction = (
+                fixed_hybrid_model.predict(
+                    fixed_features
                 )
             )
 
-            hybrid_prediction = (
-                hybrid_model.predict(
-                    hybrid_features
+            # ------------------------------------------
+            # ADAPTIVE HYBRID FORECAST
+            # ------------------------------------------
+
+            adaptive_features = extract_features(
+                inputs,
+                adaptive_weights,
+                current["discharge_cfs"],
+                trends,
+                availability,
+                include_quantum=True
+            )
+
+            adaptive_prediction = (
+                adaptive_model.predict(
+                    adaptive_features
                 )
             )
 
@@ -319,8 +439,12 @@ def replay(rows, weights, destination):
                 current["discharge_cfs"]
             )
 
+            # ------------------------------------------
+            # FUTURE TARGET
+            # ------------------------------------------
+
             future_time = (
-                current["timestamp"] + horizon
+                timestamp + horizon
             )
 
             future = lookup.get(
@@ -335,6 +459,35 @@ def replay(rows, weights, destination):
 
             is_test = index >= split
 
+            # ------------------------------------------
+            # QUEUE FORECAST FOR FUTURE FEEDBACK
+            # ------------------------------------------
+
+            if actual is not None:
+
+                pending_forecasts.setdefault(
+                    future_time,
+                    []
+                ).append({
+
+                    "inputs": inputs.copy(),
+
+                    "discharge":
+                        current["discharge_cfs"],
+
+                    "trends": trends.copy(),
+
+                    "availability":
+                        availability.copy(),
+
+                    "actual": actual
+
+                })
+
+            # ------------------------------------------
+            # EVALUATE TEST FORECASTS
+            # ------------------------------------------
+
             if is_test and actual is not None:
 
                 observed.append(actual)
@@ -347,24 +500,22 @@ def replay(rows, weights, destination):
                     classical_prediction
                 )
 
-                hybrid_predictions.append(
-                    hybrid_prediction
+                fixed_hybrid_predictions.append(
+                    fixed_prediction
                 )
 
-            def absolute_error(prediction):
-
-                if actual is None:
-                    return ""
-
-                return round(
-                    abs(prediction - actual),
-                    5
+                adaptive_predictions.append(
+                    adaptive_prediction
                 )
+
+            # ------------------------------------------
+            # SAVE RESULTS
+            # ------------------------------------------
 
             writer.writerow({
 
                 "timestamp":
-                    current["timestamp"].isoformat(),
+                    timestamp.isoformat(),
 
                 "dataset_split":
                     "TEST" if is_test else "TRAIN",
@@ -375,15 +526,6 @@ def replay(rows, weights, destination):
                 "discharge_cfs":
                     current["discharge_cfs"],
 
-                "gage_norm":
-                    round(inputs["gage_height"], 5),
-
-                "discharge_norm":
-                    round(inputs["discharge"], 5),
-
-                "rise_norm":
-                    round(inputs["water_change"], 5),
-
                 "trend_15min_cfs":
                     trends[15],
 
@@ -393,43 +535,11 @@ def replay(rows, weights, destination):
                 "trend_60min_cfs":
                     trends[60],
 
-                "trend_15min_available":
-                    availability[15],
-
-                "trend_30min_available":
-                    availability[30],
-
-                "trend_60min_available":
-                    availability[60],
-
-                "quantum_score":
-                    round(
-                        risk_result["quantum_score"],
-                        5
-                    ),
-
-                "classical_score":
-                    round(
-                        risk_result["classical_score"],
-                        5
-                    ),
-
-                "hybrid_score":
-                    round(
-                        risk_result["hybrid_score"],
-                        5
-                    ),
-
                 "risk":
                     risk_result["risk"],
 
                 "recommendation":
                     risk_result["recommendation"],
-
-                **weights,
-
-                "forecast_horizon_minutes":
-                    HORIZON_MINUTES,
 
                 "forecast_timestamp":
                     future_time.isoformat(),
@@ -438,43 +548,35 @@ def replay(rows, weights, destination):
                     actual if actual is not None else "",
 
                 "persistence_forecast_cfs":
-                    round(
-                        persistence_prediction,
-                        5
-                    ),
+                    persistence_prediction,
 
                 "classical_forecast_cfs":
-                    round(
-                        classical_prediction,
-                        5
-                    ),
+                    classical_prediction,
 
-                "hybrid_forecast_cfs":
-                    round(
-                        hybrid_prediction,
-                        5
-                    ),
+                "fixed_hybrid_forecast_cfs":
+                    fixed_prediction,
 
-                "classical_absolute_error_cfs":
-                    absolute_error(
-                        classical_prediction
-                    ),
+                "adaptive_hybrid_forecast_cfs":
+                    adaptive_prediction,
 
-                "hybrid_absolute_error_cfs":
-                    absolute_error(
-                        hybrid_prediction
-                    ),
+                "adaptive_gage_weight":
+                    adaptive_weights["gage_weight"],
 
-                "persistence_absolute_error_cfs":
-                    absolute_error(
-                        persistence_prediction
-                    )
+                "adaptive_discharge_weight":
+                    adaptive_weights["discharge_weight"],
+
+                "adaptive_change_weight":
+                    adaptive_weights["change_weight"],
+
+                "adaptive_updates":
+                    adaptive_updates
 
             })
 
             previous = current
 
     if not observed:
+
         raise ValueError(
             "No matched test forecasts available."
         )
@@ -487,6 +589,11 @@ def replay(rows, weights, destination):
 
         "test_forecasts": len(observed),
 
+        "persistence_metrics": metrics(
+            observed,
+            persistence_predictions
+        ),
+
         "classical_metrics": metrics(
             observed,
             classical_predictions
@@ -494,13 +601,17 @@ def replay(rows, weights, destination):
 
         "hybrid_metrics": metrics(
             observed,
-            hybrid_predictions
+            fixed_hybrid_predictions
         ),
 
-        "persistence_metrics": metrics(
+        "adaptive_metrics": metrics(
             observed,
-            persistence_predictions
+            adaptive_predictions
         ),
+
+        "adaptive_weights": adaptive_weights,
+
+        "adaptive_updates": adaptive_updates,
 
         "normalization_ranges": ranges
 
