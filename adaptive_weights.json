@@ -1,5 +1,5 @@
 {
-    "gage_weight": 1.0,
-    "discharge_weight": 1.0,
-    "change_weight": 1.0
+  "gage_weight": 1.1,
+  "discharge_weight": 0.9,
+  "change_weight": 1.25
 }

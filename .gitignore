@@ -1,28 +1,211 @@
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
+# ============================================================
+# NEUROQ-FLOOD — GITIGNORE
+# Bio-Inspired AI | Hybrid Quantum-Classical Flood Forecasting
+# ============================================================
 
-# Virtual environment
+
+# ============================================================
+# 1. PYTHON VIRTUAL ENVIRONMENTS
+# ============================================================
+
 .venv/
 venv/
 env/
+ENV/
+.python-version
 
-# Environment variables / secrets
-.env
-.env.*
 
-# Python build files
+# ============================================================
+# 2. PYTHON CACHE AND COMPILED FILES
+# ============================================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+.hypothesis/
+.tox/
+.nox/
+
+
+# ============================================================
+# 3. BUILD AND DISTRIBUTION FILES
+# ============================================================
+
 build/
 dist/
 *.egg-info/
+.eggs/
+*.egg
+*.whl
+pip-wheel-metadata/
+.installed.cfg
 
-# VS Code
-.vscode/
 
-# macOS
+# ============================================================
+# 4. ENVIRONMENT VARIABLES AND SECRETS
+# ============================================================
+
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+*.p12
+*.pfx
+*.secret
+secrets.json
+credentials.json
+service-account.json
+
+# Keep API keys and tokens out of GitHub.
+# Store example configurations without real credentials.
+
+
+# ============================================================
+# 5. IDE AND EDITOR FILES
+# ============================================================
+
+.vscode/*
+!.vscode/settings.example.json
+!.vscode/extensions.json
+
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+
+
+# ============================================================
+# 6. MACOS SYSTEM FILES
+# ============================================================
+
 .DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
 
-# Logs
+
+# ============================================================
+# 7. JUPYTER NOTEBOOK TEMPORARY FILES
+# ============================================================
+
+.ipynb_checkpoints/
+.profile_default/
+
+
+# ============================================================
+# 8. LOGS AND TEMPORARY FILES
+# ============================================================
+
 *.log
+logs/
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
+*.swp
+
+
+# ============================================================
+# 9. COVERAGE AND TEST OUTPUTS
+# ============================================================
+
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+junit.xml
+test-results/
+
+
+# ============================================================
+# 10. NEUROQ-FLOOD GENERATED RESULTS
+# ============================================================
+
+# Ignore generated forecasts and evaluation outputs.
+# These can be reproduced by running the project.
+
+data/results/
+
+# Keep historical USGS input datasets.
+# These are useful for reproducing experiments.
+
+!data/historical/
+
+
+# ============================================================
+# 11. NEUROQ-FLOOD ADAPTIVE MODEL STATE
+# ============================================================
+
+# Ignore locally generated adaptive model states.
+# Keep the actual learning algorithms in source control.
+
+data/memory/
+data/checkpoints/
+checkpoints/
+
+# Optional model checkpoint formats
+*.ckpt
+*.pt
+*.pth
+*.h5
+*.hdf5
+
+
+# ============================================================
+# 12. LOCAL DATABASE FILES
+# ============================================================
+
+*.db
+*.sqlite
+*.sqlite3
+
+
+# ============================================================
+# 13. LOCAL BACKUPS AND ARCHIVES
+# ============================================================
+
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# Keep documentation and source files instead.
+
+
+# ============================================================
+# 14. NEUROQ-FLOOD PROJECT FILES TO KEEP
+# ============================================================
+
+# The following files and folders are intentionally NOT
+# ignored and should be tracked by Git:
+#
+# NeuroQFlood.py
+# NeuroQFlood_Midterm.py
+# neuroq/
+# evaluation/
+# tests/
+# data/historical/
+# requirements.txt
+# README.md
+# .gitignore
+#
+# Quantum simulation, preprocessing, forecasting,
+# risk assessment, adaptive learning, and testing
+# source files should all be uploaded to GitHub.
+
+
+# ============================================================
+# END OF NEUROQ-FLOOD GITIGNORE
+# ============================================================
