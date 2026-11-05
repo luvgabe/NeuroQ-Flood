@@ -219,3 +219,130 @@ def load_csv(path):
         )
 
     return rows
+
+def get_latest_usgs(station=STATION, period="PT24H"):
+    """
+    Retrieve recent USGS measurements.
+
+    Returns:
+        {
+            "timestamp": datetime,
+            "gage_height_ft": float,
+            "discharge_cfs": float
+        }
+
+    Only returns timestamps containing both
+    gage height and discharge.
+    """
+
+    query = urlencode({
+        "format": "json",
+        "sites": station,
+        "period": period,
+        "parameterCd": "00065,00060",
+        "siteStatus": "all"
+    })
+
+    request = Request(
+        API + "?" + query,
+        headers={
+            "User-Agent": "NeuroQ-Flood Research Prototype"
+        }
+    )
+
+    with urlopen(request, timeout=45) as response:
+        payload = json.load(response)
+
+    grouped = {}
+
+    for series in payload.get(
+        "value", {}
+    ).get("timeSeries", []):
+
+        code = (
+            series.get("variable", {})
+            .get("variableCode", [{}])[0]
+            .get("value")
+        )
+
+        field = PARAMETERS.get(code)
+
+        if not field:
+            continue
+
+        for block in series.get("values", []):
+
+            for item in block.get("value", []):
+
+                try:
+                    value = float(item["value"])
+
+                    if value < 0:
+                        continue
+
+                    timestamp = datetime.fromisoformat(
+                        item["dateTime"].replace(
+                            "Z", "+00:00"
+                        )
+                    ).astimezone(timezone.utc)
+
+                except (
+                    ValueError,
+                    TypeError,
+                    KeyError
+                ):
+                    continue
+
+                grouped.setdefault(
+                    timestamp,
+                    {"timestamp": timestamp}
+                )[field] = value
+
+    rows = [
+        grouped[timestamp]
+        for timestamp in sorted(grouped)
+        if all(
+            field in grouped[timestamp]
+            for field in PARAMETERS.values()
+        )
+    ]
+
+    if not rows:
+        raise RuntimeError(
+            "No complete live USGS measurements found."
+        )
+
+    return rows[-1]
+
+def get_recent_usgs(
+    days=14,
+    station=STATION
+):
+    """
+    Retrieve recent USGS observations.
+
+    Returns chronologically sorted measurements
+    compatible with the forecasting pipeline.
+    """
+
+    from datetime import timedelta
+    from tempfile import TemporaryDirectory
+
+    end = datetime.now(timezone.utc)
+
+    start = end - timedelta(days=days)
+
+    with TemporaryDirectory() as directory:
+
+        destination = (
+            Path(directory) / "recent_usgs.csv"
+        )
+
+        download_usgs(
+            start.isoformat(),
+            end.isoformat(),
+            destination,
+            station=station
+        )
+
+        return load_csv(destination)
