@@ -1,10 +1,13 @@
-# NeuroQ-Flood Week 9 Historical Replay
+# NeuroQ-Flood — Python Dependencies
 #
-# Uses Python standard library only.
+# Core forecasting, preprocessing, historical replay,
+# and adaptive learning use the Python standard library.
 #
-# Future dependencies may include:
-# qiskit
-# qiskit-aer
-# numpy
-# pandas
-# matplotlib
+# The dependencies below enable optional IBM Quantum
+# hardware execution and circuit validation.
+
+# Quantum circuit construction and transpilation
+qiskit==2.5.2
+
+# IBM Quantum hardware access and execution
+qiskit-ibm-runtime==0.52.1

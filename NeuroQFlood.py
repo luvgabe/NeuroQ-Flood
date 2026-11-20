@@ -12,11 +12,17 @@ Compares four forecasting approaches:
 
 Uses historical USGS measurements and
 chronological forecasting evaluation.
+
+Optional IBM Quantum integration allows
+comparison between local quantum simulation
+and real quantum hardware execution.
 """
 
 import argparse
 
 from pathlib import Path
+
+from datetime import datetime, timezone
 
 from neuroq.live_memory import (
     load_live_state,
@@ -42,8 +48,6 @@ from evaluation.live_forecast import run_live_forecast
 from neuroq.live_learning import learn_from_completed
 
 from evaluation.accuracy_metrics import print_metrics
-
-from datetime import datetime, timezone
 
 
 ROOT = Path(__file__).resolve().parent
@@ -93,7 +97,66 @@ def main():
         help="Generate a live 60-minute USGS forecast"
     )
 
+    # --------------------------------------------------
+    # IBM QUANTUM HARDWARE OPTIONS
+    # --------------------------------------------------
+
+    parser.add_argument(
+        "--ibm-quantum",
+        action="store_true",
+        help=(
+            "Compare local quantum simulation "
+            "against real IBM Quantum hardware"
+        )
+    )
+
+    parser.add_argument(
+        "--backend",
+        default="ibm_fez",
+        help="IBM Quantum backend (default: ibm_fez)"
+    )
+
+    parser.add_argument(
+        "--shots",
+        type=int,
+        default=1024,
+        help="IBM Quantum measurement shots (default: 1024)"
+    )
+
     args = parser.parse_args()
+
+    # --------------------------------------------------
+    # IBM QUANTUM COMPARISON MODE
+    # --------------------------------------------------
+
+    if args.ibm_quantum:
+
+        if args.live:
+            parser.error(
+                "--ibm-quantum cannot be combined with --live."
+            )
+
+        if args.shots <= 0:
+            parser.error(
+                "--shots must be greater than zero."
+            )
+
+        # Import only when IBM hardware mode is requested.
+        # Normal forecasting does not require Qiskit.
+        from evaluation.ibm_comparison import (
+            run_ibm_comparison
+        )
+
+        run_ibm_comparison(
+            backend_name=args.backend,
+            shots=args.shots
+        )
+
+        return
+
+    # --------------------------------------------------
+    # LIVE FORECASTING MODE
+    # --------------------------------------------------
 
     if args.live:
 
@@ -200,7 +263,7 @@ def main():
 
         save_live_state(state_path, state)
 
-                # Generate the next live forecast using current weights.
+        # Generate the next live forecast using current weights.
         try:
 
             result = run_live_forecast(
@@ -371,6 +434,10 @@ def main():
         print("=" * 60)
 
         return
+
+    # --------------------------------------------------
+    # HISTORICAL FORECASTING MODE
+    # --------------------------------------------------
 
     cache = (
         args.csv
